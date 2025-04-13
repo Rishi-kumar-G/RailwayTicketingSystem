@@ -40,85 +40,51 @@ export async function GET(request) {
       );
     }
 
-    // Get the day of the week for the journey date
-    const journeyDate = new Date(date);
-    const dayOfWeek = journeyDate.getDay();
-    const dayColumn = `runs_on_${['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayOfWeek]}`;
+    const connection = await pool.getConnection();
 
-    // Base query to find trains running between source and destination
-    let query = `
-      SELECT 
-        t.train_number,
-        t.train_name,
-        t.train_type,
-        rs1.arrival_time as source_arrival,
-        rs1.departure_time as source_departure,
-        rs2.arrival_time as dest_arrival,
-        rs2.departure_time as dest_departure,
-        r.total_distance,
-        r.total_stops,
-        GROUP_CONCAT(
-          CONCAT(
-            tc.class_type, '|',
-            tc.basic_fare, '|',
-            COALESCE(ts.available_seats, tc.total_seats), '|',
-            COALESCE(ts.rac_seats, 0), '|',
-            COALESCE(ts.waitlist_count, 0)
-          )
-        ) as class_info
-      FROM TRAIN t
-      JOIN ROUTE r ON t.train_number = r.train_number
-      JOIN ROUTE_STATION rs1 ON r.route_id = rs1.route_id
-      JOIN ROUTE_STATION rs2 ON r.route_id = rs2.route_id
-      JOIN TRAIN_CLASS tc ON t.train_number = tc.train_number
-      LEFT JOIN TRAIN_STATUS ts ON t.train_number = ts.train_number 
-        AND ts.journey_date = ? 
-        AND tc.class_type = ts.class_type
-      WHERE rs1.station_code = ? 
-        AND rs2.station_code = ?
-        AND rs1.stop_number < rs2.stop_number
-        AND t.${dayColumn} = TRUE
-    `;
+    try {
+      // Call the search_trains function
+      // In src/app/api/search-trains/route.js
+const [result] = await connection.query(
+    SELECT COALESCE(search_trains(?, ?, ?, ?), '[]') as trains,
+    [source, destination, date, classType]
+  );
+  
+  // Parse the JSON result
+  const trains = JSON.parse(result[0].trains);
 
-    const params = [date, source, destination];
+      // Format the response
+      const formattedTrains = trains.map(train => {
+        const classes = train.class_info.split(',').map(classInfo => {
+          const [classType, fare, availableSeats, racSeats, waitlistCount] = classInfo.split('|');
+          return {
+            classType,
+            fare: parseFloat(fare),
+            availableSeats: parseInt(availableSeats),
+            racSeats: parseInt(racSeats),
+            waitlistCount: parseInt(waitlistCount)
+          };
+        });
 
-    if (classType) {
-      query += ` AND tc.class_type = ?`;
-      params.push(classType);
-    }
-
-    query += ` GROUP BY t.train_number, t.train_name, t.train_type, rs1.arrival_time, rs1.departure_time, rs2.arrival_time, rs2.departure_time, r.total_distance, r.total_stops
-               ORDER BY rs1.departure_time`;
-
-    const [trains] = await pool.query(query, params);
-
-    // Format the response
-    const formattedTrains = trains.map(train => {
-      const classes = train.class_info.split(',').map(classInfo => {
-        const [classType, fare, availableSeats, racSeats, waitlistCount] = classInfo.split('|');
         return {
-          classType,
-          fare: parseFloat(fare),
-          availableSeats: parseInt(availableSeats),
-          racSeats: parseInt(racSeats),
-          waitlistCount: parseInt(waitlistCount)
+          trainNumber: train.train_number,
+          trainName: train.train_name,
+          trainType: train.train_type,
+          departureTime: train.source_departure,
+          arrivalTime: train.dest_arrival,
+          duration: calculateDuration(train.source_departure, train.dest_arrival),
+          distance: train.total_distance,
+          totalStops: train.total_stops,
+          classes: classes
         };
       });
 
-      return {
-        trainNumber: train.train_number,
-        trainName: train.train_name,
-        trainType: train.train_type,
-        departureTime: train.source_departure,
-        arrivalTime: train.dest_arrival,
-        duration: calculateDuration(train.source_departure, train.dest_arrival),
-        distance: train.total_distance,
-        totalStops: train.total_stops,
-        classes: classes
-      };
-    });
+      return NextResponse.json({ trains: formattedTrains });
 
-    return NextResponse.json({ trains: formattedTrains });
+    } finally {
+      connection.release();
+    }
+
   } catch (error) {
     console.error('Error searching trains:', error);
     return NextResponse.json(
@@ -129,8 +95,8 @@ export async function GET(request) {
 }
 
 function calculateDuration(departure, arrival) {
-  const depTime = new Date(`2000-01-01T${departure}`);
-  const arrTime = new Date(`2000-01-01T${arrival}`);
+  const depTime = new Date(2000-01-01T${departure});
+  const arrTime = new Date(2000-01-01T${arrival});
   
   // Handle overnight journeys
   if (arrTime < depTime) {
@@ -141,7 +107,7 @@ function calculateDuration(departure, arrival) {
   const hours = Math.floor(diffMs / (1000 * 60 * 60));
   const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
   
-  return `${hours}h ${minutes}m`;
+  return ${hours}h ${minutes}m;
 }
 
 // Handle POST requests (for more complex search criteria)
