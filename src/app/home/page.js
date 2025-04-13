@@ -224,6 +224,48 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+
+        {/* PNR Status Check Section */}
+        <div className="mt-8 bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="bg-blue-600 py-4 px-8">
+            <h2 className="text-xl font-bold text-white">Check PNR Status</h2>
+            <p className="text-blue-100 text-sm">Enter your PNR number to check booking status</p>
+          </div>
+          
+          <div className="p-6">
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const pnr = e.target.pnr.value;
+              if (pnr) {
+                router.push(`/booking-confirmation?pnr=${pnr}`);
+              }
+            }} className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label htmlFor="pnr" className="block text-sm font-medium text-gray-700 mb-1">
+                  PNR Number
+                </label>
+                <input
+                  type="text"
+                  id="pnr"
+                  name="pnr"
+                //   pattern="[0-9]"
+                  maxLength="10"
+                  placeholder="Enter 10-digit PNR number"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 py-3 px-4"
+                  required
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="submit"
+                  className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                >
+                  Check Status
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   );
