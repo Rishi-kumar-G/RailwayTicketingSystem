@@ -77,7 +77,7 @@ export default function HomePage() {
                     name="source"
                     value={formData.source}
                     onChange={handleChange}
-                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 pl-3 pr-10 py-3"
+                    className="block w-full rounded-lg border-gray-300 text-black shadow-sm focus:border-blue-500 focus:ring-blue-500 pl-3 pr-10 py-3"
                     placeholder="Enter source station"
                     list="sourceStations"
                     required
@@ -90,7 +90,7 @@ export default function HomePage() {
                 </div>
                 
                 <div className="relative">
-                  <label htmlFor="destination" className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+                  <label htmlFor="destination" className="block text-sm text-black font-medium text-gray-700 mb-1 flex items-center">
                     <MapPin className="h-4 w-4 mr-1 text-blue-500" />
                     To
                   </label>
@@ -100,7 +100,7 @@ export default function HomePage() {
                     name="destination"
                     value={formData.destination}
                     onChange={handleChange}
-                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 pl-3 pr-10 py-3"
+                    className="block w-full rounded-lg border-gray-300 shadow-sm text-black  focus:border-blue-500 focus:ring-blue-500 pl-3 pr-10 py-3"
                     placeholder="Enter destination station"
                     list="destStations"
                     required
@@ -137,7 +137,7 @@ export default function HomePage() {
                     name="date"
                     value={formData.date}
                     onChange={handleChange}
-                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 py-3"
+                    className="block w-full text-black  rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 py-3"
                     required
                     min={new Date().toISOString().split('T')[0]}
                   />
@@ -153,7 +153,7 @@ export default function HomePage() {
                     name="passengers"
                     value={formData.passengers}
                     onChange={handleChange}
-                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 py-3"
+                    className="block w-full text-black  rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 py-3"
                   >
                     {[1, 2, 3, 4, 5, 6].map(num => (
                       <option key={num} value={num}>{num} {num === 1 ? 'Passenger' : 'Passengers'}</option>
@@ -171,7 +171,7 @@ export default function HomePage() {
                     name="class"
                     value={formData.class}
                     onChange={handleChange}
-                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 py-3"
+                    className="block w-full text-black  rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 py-3"
                   >
                     <option value="economy">Economy</option>
                     <option value="standard">Standard</option>
