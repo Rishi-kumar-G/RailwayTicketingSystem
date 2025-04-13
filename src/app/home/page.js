@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Search, Calendar, MapPin, Train, ArrowRight } from 'lucide-react';
 
 export default function HomePage() {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     source: '',
     destination: '',
@@ -13,6 +15,10 @@ export default function HomePage() {
   });
 
   const [isSearching, setIsSearching] = useState(false);
+
+  const [searchResults, setSearchResults] = useState([]);
+  const [showResults, setShowResults] = useState(false);
+  const [error, setError] = useState(null);
   
   // Popular stations for quick selection
   const popularStations = [
@@ -22,14 +28,12 @@ export default function HomePage() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setIsSearching(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      console.log('Searching for trains:', formData);
-      setIsSearching(false);
-      // Here you would typically handle the search results
-    }, 1500);
+    const queryParams = new URLSearchParams({
+      source: formData.source,
+      destination: formData.destination,
+      date: formData.date,
+    });
+    router.push(`/search-results?${queryParams.toString()}`);
   };
 
   const handleChange = (e) => {
@@ -173,10 +177,14 @@ export default function HomePage() {
                     onChange={handleChange}
                     className="block w-full text-black  rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 py-3"
                   >
-                    <option value="economy">Economy</option>
-                    <option value="standard">Standard</option>
-                    <option value="business">Business</option>
-                    <option value="first">First Class</option>
+                    <option value="First Class AC">First Class AC</option>
+                    <option value="Second Class AC">Second Class AC</option>
+                    <option value="Third Class AC">Third Class AC</option>
+                    <option value="Sleeper Class">Sleeper Class</option>
+                    <option value="Chair Car">Chair Car</option>
+                    <option value="Second Sitting">Second Sitting</option>
+                    <option value="Executive Chair Car">Executive Chair Car</option>
+
                   </select>
                 </div>
               </div>
