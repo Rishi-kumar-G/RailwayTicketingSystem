@@ -65,7 +65,31 @@ const [result] = await connection.query(
             waitlistCount: parseInt(waitlistCount)
           };
         });
+      // Format the response
+      const formattedTrains = trains.map(train => {
+        const classes = train.class_info.split(',').map(classInfo => {
+          const [classType, fare, availableSeats, racSeats, waitlistCount] = classInfo.split('|');
+          return {
+            classType,
+            fare: parseFloat(fare),
+            availableSeats: parseInt(availableSeats),
+            racSeats: parseInt(racSeats),
+            waitlistCount: parseInt(waitlistCount)
+          };
+        });
 
+        return {
+          trainNumber: train.train_number,
+          trainName: train.train_name,
+          trainType: train.train_type,
+          departureTime: train.source_departure,
+          arrivalTime: train.dest_arrival,
+          duration: calculateDuration(train.source_departure, train.dest_arrival),
+          distance: train.total_distance,
+          totalStops: train.total_stops,
+          classes: classes
+        };
+      });
         return {
           trainNumber: train.train_number,
           trainName: train.train_name,
@@ -84,6 +108,8 @@ const [result] = await connection.query(
     } finally {
       connection.release();
     }
+
+      
 
   } catch (error) {
     console.error('Error searching trains:', error);
