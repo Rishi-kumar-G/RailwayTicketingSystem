@@ -181,3 +181,68 @@ CREATE TABLE CANCELLATION (
     cancelled_by VARCHAR(30),
     FOREIGN KEY (pnr_number) REFERENCES TICKET(pnr_number)
 );
+
+
+-- For Booking details
+
+
+
+DROP FUNCTION IF EXISTS get_booking_details;
+
+DELIMITER //
+
+CREATE FUNCTION get_booking_details(p_pnr VARCHAR(15)) 
+RETURNS JSON
+DETERMINISTIC
+BEGIN
+    DECLARE result JSON;
+    
+    -- Get ticket and passenger details
+    SELECT JSON_OBJECT(
+        'pnr', t.pnr_number,
+        'trainName', tr.train_name,
+        'trainNumber', t.train_number,
+        'classType', t.class_type,
+        'journeyDate', t.journey_date,
+        'sourceStation', t.source_station,
+        'destinationStation', t.destination_station,
+        'departureTime', rs1.departure_time,
+        'arrivalTime', rs2.arrival_time,
+        'totalFare', t.total_fare,
+        'passengers', (
+            SELECT JSON_ARRAYAGG(
+                JSON_OBJECT(
+                    'name', p.name,
+                    'age', TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()),
+                    'gender', p.gender,
+                    'seatNumber', pt.seat_number,
+                    'coachNumber', pt.coach_number,
+                    'status', pt.reservation_status
+                )
+            )
+            FROM PASSENGER p
+            JOIN PASSENGER_TICKET pt ON p.passenger_id = pt.passenger_id
+            WHERE pt.pnr_number = t.pnr_number
+        ),
+        'payment', (
+            SELECT JSON_OBJECT(
+                'paymentMode', payment_mode,
+                'transactionId', transaction_id,
+                'paymentStatus', payment_status
+            )
+            FROM PAYMENT
+            WHERE pnr_number = t.pnr_number
+            LIMIT 1
+        )
+    ) INTO result
+    FROM TICKET t
+    JOIN TRAIN tr ON t.train_number = tr.train_number
+    JOIN ROUTE r ON t.train_number = r.train_number
+    JOIN ROUTE_STATION rs1 ON r.route_id = rs1.route_id AND t.source_station = rs1.station_code
+    JOIN ROUTE_STATION rs2 ON r.route_id = rs2.route_id AND t.destination_station = rs2.station_code
+    WHERE t.pnr_number = p_pnr;
+    
+    RETURN result;
+END //
+
+DELIMITER ;
