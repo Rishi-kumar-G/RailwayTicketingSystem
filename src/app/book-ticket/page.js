@@ -15,7 +15,9 @@ export default function BookTicket() {
     gender: '',
     idProofType: '',
     idProofNumber: '',
-    isRegistered: false
+    isRegistered: false,
+    concessionType: '',
+    concessionProof: ''
   });
 
   const trainNumber = searchParams.get('train');
@@ -165,6 +167,42 @@ export default function BookTicket() {
                 required
               />
             </div>
+
+            <div>
+              <label htmlFor="concessionType" className="block text-sm font-medium text-gray-700">
+                Concession Type
+              </label>
+              <select
+                id="concessionType"
+                name="concessionType"
+                value={formData.concessionType}
+                onChange={handleChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              >
+                <option value="">No Concession</option>
+                <option value="Senior Citizen">Senior Citizen</option>
+                <option value="Student">Student</option>
+                <option value="Military">Military Personnel</option>
+                <option value="Disabled">Disabled Person</option>
+              </select>
+            </div>
+
+            {formData.concessionType && (
+              <div>
+                <label htmlFor="concessionProof" className="block text-sm font-medium text-gray-700">
+                  Concession Proof Number
+                </label>
+                <input
+                  type="text"
+                  id="concessionProof"
+                  name="concessionProof"
+                  value={formData.concessionProof}
+                  onChange={handleChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  required={formData.concessionType !== ''}
+                />
+              </div>
+            )}
 
             <div>
               <label htmlFor="address" className="block text-sm font-medium text-gray-700">

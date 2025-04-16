@@ -270,6 +270,8 @@ CREATE PROCEDURE book_ticket(
     IN p_class_type VARCHAR(20),
     IN p_payment_mode VARCHAR(30),
     IN p_num_passengers INT,
+    IN p_concession_type VARCHAR(30),
+    IN p_concession_proof VARCHAR(50),
     OUT p_result JSON
 )
 BEGIN
@@ -284,6 +286,8 @@ BEGIN
     DECLARE v_booking_status VARCHAR(20);
     DECLARE v_waitlist_count INT;
     DECLARE v_seat_numbers JSON DEFAULT JSON_ARRAY();
+    DECLARE v_concession_percentage FLOAT DEFAULT 0;
+    DECLARE v_concession_amount FLOAT DEFAULT 0;
     DECLARE i INT DEFAULT 1;
     
     -- Set booking channel based on payment mode
@@ -300,8 +304,16 @@ BEGIN
     FROM TRAIN_CLASS
     WHERE train_number = p_train_number AND class_type = p_class_type;
     
-    -- Calculate total fare (basic fare + 5% GST + 2% service charge)
-    SET v_total_fare = v_basic_fare * 1.07 * p_num_passengers;
+    -- Get concession percentage if applicable
+    IF p_concession_type IS NOT NULL THEN
+        SELECT concession_percentage INTO v_concession_percentage
+        FROM CONCESSION
+        WHERE concession_type = p_concession_type;
+    END IF;
+    
+    -- Calculate total fare with concession
+    SET v_concession_amount = v_basic_fare * (v_concession_percentage / 100) * p_num_passengers;
+    SET v_total_fare = (v_basic_fare * 1.07 * p_num_passengers) - v_concession_amount;
     
     -- Get source and destination stations
     SELECT source_station, destination_station 
@@ -378,15 +390,16 @@ BEGIN
         v_total_fare, v_booking_status, NOW(), v_booking_channel
     );
     
-    -- Insert passenger ticket
+    -- Insert passenger ticket with concession details
     INSERT INTO PASSENGER_TICKET (
         pnr_number, passenger_id, seat_number, coach_number,
-        reservation_status, is_primary_passenger
+        reservation_status, is_primary_passenger, concession_type,
+        concession_amount
     ) VALUES (
         v_pnr, v_passenger_id, 
         IF(v_booking_status = 'CONFIRMED', JSON_EXTRACT(v_seat_numbers, '$[0]'), NULL),
         IF(v_booking_status = 'CONFIRMED', p_class_type, NULL),
-        v_booking_status, TRUE
+        v_booking_status, TRUE, p_concession_type, v_concession_amount
     );
     
     -- Insert payment
@@ -410,6 +423,7 @@ BEGIN
         'bookingStatus', v_booking_status,
         'waitingListNumber', v_waitlist_count,
         'seatNumbers', v_seat_numbers,
+        'concessionAmount', v_concession_amount,
         'message', CONCAT('Ticket ', 
             IF(v_booking_status = 'CONFIRMED', 'booked successfully', 
             'added to waiting list')),
