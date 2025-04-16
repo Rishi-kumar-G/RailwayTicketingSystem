@@ -14,6 +14,7 @@ export default function SearchResults() {
   const destination = searchParams.get('destination');
   const date = searchParams.get('date');
   const classType = searchParams.get('class');
+  const passengers = searchParams.get('passengers');
 
   useEffect(() => {
     const fetchTrains = async () => {
@@ -33,7 +34,7 @@ export default function SearchResults() {
       } finally {
         setLoading(false);
       }
-    };
+    };  
 
     if (source && destination && date) {
       fetchTrains();
@@ -242,7 +243,7 @@ export default function SearchResults() {
                         </div>
                         
                         <Link
-                          href={`/book-ticket?train=${train.trainNumber}&date=${date}&class=${trainClass.classType}`}
+                          href={`/book-ticket?train=${train.trainNumber}&date=${date}&class=${trainClass.classType}&passengers=${passengers}`}
                           className="flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

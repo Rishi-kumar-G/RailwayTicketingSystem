@@ -21,6 +21,7 @@ export default function BookTicket() {
   const trainNumber = searchParams.get('train');
   const date = searchParams.get('date');
   const classType = searchParams.get('class');
+  const passengers = searchParams.get('passengers');
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -29,7 +30,8 @@ export default function BookTicket() {
       ...formData,
       trainNumber,
       date,
-      classType
+      classType,
+      passengers
     }));
     router.push('/payment');
   };

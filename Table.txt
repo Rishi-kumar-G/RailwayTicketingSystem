@@ -269,6 +269,7 @@ CREATE PROCEDURE book_ticket(
     IN p_journey_date DATE,
     IN p_class_type VARCHAR(20),
     IN p_payment_mode VARCHAR(30),
+    IN p_num_passengers INT,
     OUT p_result JSON
 )
 BEGIN
@@ -279,6 +280,11 @@ BEGIN
     DECLARE v_booking_channel VARCHAR(20);
     DECLARE v_source_station VARCHAR(10);
     DECLARE v_dest_station VARCHAR(10);
+    DECLARE v_available_seats INT;
+    DECLARE v_booking_status VARCHAR(20);
+    DECLARE v_waitlist_count INT;
+    DECLARE v_seat_numbers JSON DEFAULT JSON_ARRAY();
+    DECLARE i INT DEFAULT 1;
     
     -- Set booking channel based on payment mode
     SET v_booking_channel = IF(p_payment_mode = 'Online', 'Online', 'Counter');
@@ -295,7 +301,7 @@ BEGIN
     WHERE train_number = p_train_number AND class_type = p_class_type;
     
     -- Calculate total fare (basic fare + 5% GST + 2% service charge)
-    SET v_total_fare = v_basic_fare * 1.07;
+    SET v_total_fare = v_basic_fare * 1.07 * p_num_passengers;
     
     -- Get source and destination stations
     SELECT source_station, destination_station 
@@ -303,6 +309,49 @@ BEGIN
     FROM ROUTE 
     WHERE train_number = p_train_number 
     LIMIT 1;
+    
+    -- Get current available seats and waitlist count
+    SELECT available_seats, waitlist_count
+    INTO v_available_seats, v_waitlist_count
+    FROM TRAIN_STATUS
+    WHERE train_number = p_train_number 
+    AND journey_date = p_journey_date 
+    AND class_type = p_class_type;
+    
+    -- Determine booking status and update seats
+    IF v_available_seats >= p_num_passengers THEN
+        -- Confirm booking
+        SET v_booking_status = 'CONFIRMED';
+        SET v_waitlist_count = 0;
+        
+        -- Generate seat numbers
+        WHILE i <= p_num_passengers DO
+            SET v_seat_numbers = JSON_ARRAY_APPEND(v_seat_numbers, '$', 
+                CONCAT(p_class_type, '-', v_available_seats - i + 1));
+            SET i = i + 1;
+        END WHILE;
+        
+        -- Update available seats
+        UPDATE TRAIN_STATUS
+        SET available_seats = available_seats - p_num_passengers,
+            last_updated = NOW()
+        WHERE train_number = p_train_number 
+        AND journey_date = p_journey_date 
+        AND class_type = p_class_type;
+        
+    ELSE
+        -- Add to waiting list
+        SET v_booking_status = 'WAITLISTED';
+        SET v_waitlist_count = v_waitlist_count + 1;
+        
+        -- Update waiting list
+        UPDATE TRAIN_STATUS
+        SET waitlist_count = waitlist_count + 1,
+            last_updated = NOW()
+        WHERE train_number = p_train_number 
+        AND journey_date = p_journey_date 
+        AND class_type = p_class_type;
+    END IF;
     
     -- Start transaction
     START TRANSACTION;
@@ -325,8 +374,8 @@ BEGIN
         total_fare, booking_status, booking_timestamp, booking_channel
     ) VALUES (
         v_pnr, CURDATE(), p_journey_date, v_source_station,
-        v_dest_station, p_train_number, p_class_type, 1, v_total_fare,
-        'CONFIRMED', NOW(), v_booking_channel
+        v_dest_station, p_train_number, p_class_type, p_num_passengers,
+        v_total_fare, v_booking_status, NOW(), v_booking_channel
     );
     
     -- Insert passenger ticket
@@ -334,7 +383,10 @@ BEGIN
         pnr_number, passenger_id, seat_number, coach_number,
         reservation_status, is_primary_passenger
     ) VALUES (
-        v_pnr, v_passenger_id, NULL, NULL, 'CONFIRMED', TRUE
+        v_pnr, v_passenger_id, 
+        IF(v_booking_status = 'CONFIRMED', JSON_EXTRACT(v_seat_numbers, '$[0]'), NULL),
+        IF(v_booking_status = 'CONFIRMED', p_class_type, NULL),
+        v_booking_status, TRUE
     );
     
     -- Insert payment
@@ -344,15 +396,9 @@ BEGIN
     ) VALUES (
         v_pnr, v_total_fare, p_payment_mode, NOW(),
         CONCAT('TXN', DATE_FORMAT(NOW(), '%Y%m%d%H%i%s')),
-        'Success', v_basic_fare * 0.05, v_basic_fare * 0.02
+        'Success', v_basic_fare * 0.05 * p_num_passengers, 
+        v_basic_fare * 0.02 * p_num_passengers
     );
-    
-    -- Update train status
-    UPDATE TRAIN_STATUS 
-    SET available_seats = available_seats - 1
-    WHERE train_number = p_train_number 
-    AND journey_date = p_journey_date 
-    AND class_type = p_class_type;
     
     -- Commit transaction
     COMMIT;
@@ -361,7 +407,12 @@ BEGIN
     SET p_result = JSON_OBJECT(
         'success', TRUE,
         'pnr', v_pnr,
-        'message', 'Ticket booked successfully',
+        'bookingStatus', v_booking_status,
+        'waitingListNumber', v_waitlist_count,
+        'seatNumbers', v_seat_numbers,
+        'message', CONCAT('Ticket ', 
+            IF(v_booking_status = 'CONFIRMED', 'booked successfully', 
+            'added to waiting list')),
         'bookingDetails', (
             SELECT get_booking_details(v_pnr)
         )
@@ -446,6 +497,113 @@ BEGIN
     WHERE t.train_number = p_train_number;
     
     RETURN result;
+END //
+
+DELIMITER ;
+
+
+
+
+-- FUNCTION to cancel a ticket 
+
+DROP PROCEDURE IF EXISTS cancel_ticket;
+
+DELIMITER //
+
+CREATE PROCEDURE cancel_ticket(
+    IN p_pnr VARCHAR(15),
+    IN p_cancellation_reason VARCHAR(200),
+    OUT p_result JSON
+)
+BEGIN
+    DECLARE v_train_number VARCHAR(10);
+    DECLARE v_journey_date DATE;
+    DECLARE v_class_type VARCHAR(20);
+    DECLARE v_total_passengers INT;
+    DECLARE v_total_fare FLOAT;
+    DECLARE v_refund_amount FLOAT;
+    DECLARE v_cancellation_charge FLOAT;
+    DECLARE v_cancellation_id INT;
+    
+    -- Get ticket details
+    SELECT train_number, journey_date, class_type, total_passengers, total_fare
+    INTO v_train_number, v_journey_date, v_class_type, v_total_passengers, v_total_fare
+    FROM TICKET
+    WHERE pnr_number = p_pnr;
+    
+    -- Calculate cancellation charges based on time before journey
+    -- More than 48 hours: 25% charge
+    -- 24-48 hours: 50% charge
+    -- Less than 24 hours: 75% charge
+    SET v_cancellation_charge = 
+        CASE 
+            WHEN TIMESTAMPDIFF(HOUR, NOW(), v_journey_date) > 48 THEN v_total_fare * 0.25
+            WHEN TIMESTAMPDIFF(HOUR, NOW(), v_journey_date) > 24 THEN v_total_fare * 0.50
+            ELSE v_total_fare * 0.75
+        END;
+    
+    SET v_refund_amount = v_total_fare - v_cancellation_charge;
+    
+    -- Get next cancellation_id
+    SELECT COALESCE(MAX(cancellation_id), 0) + 1 INTO v_cancellation_id
+    FROM CANCELLATION;
+    
+    -- Start transaction
+    START TRANSACTION;
+    
+    -- Update ticket status
+    UPDATE TICKET
+    SET booking_status = 'CANCELLED'
+    WHERE pnr_number = p_pnr;
+    
+    -- Update passenger ticket status
+    UPDATE PASSENGER_TICKET
+    SET reservation_status = 'CANCELLED'
+    WHERE pnr_number = p_pnr;
+    
+    -- Update train status to add back available seats
+    UPDATE TRAIN_STATUS
+    SET available_seats = available_seats + v_total_passengers,
+        last_updated = NOW()
+    WHERE train_number = v_train_number
+    AND journey_date = v_journey_date
+    AND class_type = v_class_type;
+    
+    -- Insert cancellation record
+    INSERT INTO CANCELLATION (
+        cancellation_id,
+        pnr_number, 
+        cancellation_timestamp, 
+        cancellation_reason,
+        refund_amount, 
+        refund_status, 
+        cancelled_by
+    ) VALUES (
+        v_cancellation_id,
+        p_pnr, 
+        NOW(), 
+        p_cancellation_reason,
+        v_refund_amount, 
+        'Processed', 
+        'Passenger'
+    );
+    
+    -- Update payment status
+    UPDATE PAYMENT
+    SET payment_status = 'Refunded'
+    WHERE pnr_number = p_pnr;
+    
+    -- Commit transaction
+    COMMIT;
+    
+    -- Set the result
+    SET p_result = JSON_OBJECT(
+        'success', TRUE,
+        'pnr', p_pnr,
+        'refundAmount', v_refund_amount,
+        'cancellationCharge', v_cancellation_charge,
+        'message', 'Ticket cancelled successfully'
+    );
 END //
 
 DELIMITER ;

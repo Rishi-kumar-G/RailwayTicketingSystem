@@ -17,7 +17,8 @@ export async function POST(request) {
       trainNumber,
       date,
       classType,
-      paymentMode
+      paymentMode,
+      passengers
     } = bookingData;
 
     const connection = await pool.getConnection();
@@ -25,7 +26,7 @@ export async function POST(request) {
     try {
       // First, call the procedure
       await connection.query(
-        `CALL book_ticket(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, @result)`,
+        `CALL book_ticket(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, @result)`,
         [
           name,
           email,
@@ -39,7 +40,8 @@ export async function POST(request) {
           trainNumber,
           date,
           classType,
-          paymentMode
+          paymentMode,
+          passengers
         ]
       );
 

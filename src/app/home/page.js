@@ -22,8 +22,7 @@ export default function HomePage() {
   
   // Popular stations for quick selection
   const popularStations = [
-    'London', 'Manchester', 'Birmingham', 'Edinburgh', 
-    'Glasgow', 'Liverpool', 'Leeds', 'Sheffield'
+    
   ];
 
   const handleSubmit = (e) => {
@@ -32,6 +31,8 @@ export default function HomePage() {
       source: formData.source,
       destination: formData.destination,
       date: formData.date,
+      passengers: formData.passengers,
+      class: formData.class
     });
     router.push(`/search-results?${queryParams.toString()}`);
   };
