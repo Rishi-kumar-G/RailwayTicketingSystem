@@ -270,8 +270,6 @@ CREATE PROCEDURE book_ticket(
     IN p_class_type VARCHAR(20),
     IN p_payment_mode VARCHAR(30),
     IN p_num_passengers INT,
-    IN p_concession_type VARCHAR(30),
-    IN p_concession_proof VARCHAR(50),
     OUT p_result JSON
 )
 BEGIN
@@ -286,8 +284,6 @@ BEGIN
     DECLARE v_booking_status VARCHAR(20);
     DECLARE v_waitlist_count INT;
     DECLARE v_seat_numbers JSON DEFAULT JSON_ARRAY();
-    DECLARE v_concession_percentage FLOAT DEFAULT 0;
-    DECLARE v_concession_amount FLOAT DEFAULT 0;
     DECLARE i INT DEFAULT 1;
     
     -- Set booking channel based on payment mode
@@ -304,16 +300,8 @@ BEGIN
     FROM TRAIN_CLASS
     WHERE train_number = p_train_number AND class_type = p_class_type;
     
-    -- Get concession percentage if applicable
-    IF p_concession_type IS NOT NULL THEN
-        SELECT concession_percentage INTO v_concession_percentage
-        FROM CONCESSION
-        WHERE concession_type = p_concession_type;
-    END IF;
-    
-    -- Calculate total fare with concession
-    SET v_concession_amount = v_basic_fare * (v_concession_percentage / 100) * p_num_passengers;
-    SET v_total_fare = (v_basic_fare * 1.07 * p_num_passengers) - v_concession_amount;
+    -- Calculate total fare (basic fare + 5% GST + 2% service charge)
+    SET v_total_fare = v_basic_fare * 1.07 * p_num_passengers;
     
     -- Get source and destination stations
     SELECT source_station, destination_station 
@@ -390,16 +378,15 @@ BEGIN
         v_total_fare, v_booking_status, NOW(), v_booking_channel
     );
     
-    -- Insert passenger ticket with concession details
+    -- Insert passenger ticket
     INSERT INTO PASSENGER_TICKET (
         pnr_number, passenger_id, seat_number, coach_number,
-        reservation_status, is_primary_passenger, concession_type,
-        concession_amount
+        reservation_status, is_primary_passenger
     ) VALUES (
         v_pnr, v_passenger_id, 
         IF(v_booking_status = 'CONFIRMED', JSON_EXTRACT(v_seat_numbers, '$[0]'), NULL),
         IF(v_booking_status = 'CONFIRMED', p_class_type, NULL),
-        v_booking_status, TRUE, p_concession_type, v_concession_amount
+        v_booking_status, TRUE
     );
     
     -- Insert payment
@@ -423,7 +410,6 @@ BEGIN
         'bookingStatus', v_booking_status,
         'waitingListNumber', v_waitlist_count,
         'seatNumbers', v_seat_numbers,
-        'concessionAmount', v_concession_amount,
         'message', CONCAT('Ticket ', 
             IF(v_booking_status = 'CONFIRMED', 'booked successfully', 
             'added to waiting list')),
@@ -621,3 +607,210 @@ BEGIN
 END //
 
 DELIMITER ;
+
+--1
+
+SELECT 
+    t.pnr_number,
+    t.booking_status,
+    t.train_number,
+    tr.train_name,
+    t.journey_date,
+    t.source_station,
+    t.destination_station,
+    t.class_type,
+    p.name,
+    pt.seat_number,
+    pt.coach_number,
+    pt.reservation_status
+FROM TICKET t
+JOIN TRAIN tr ON t.train_number = tr.train_number
+JOIN PASSENGER_TICKET pt ON t.pnr_number = pt.pnr_number
+JOIN PASSENGER p ON pt.passenger_id = p.passenger_id
+WHERE t.pnr_number = '2504166955';
+
+
+
+
+--2
+
+SELECT 
+    rs.station_code,
+    s.station_name,
+    rs.arrival_time,
+    rs.departure_time,
+    rs.distance_from_source,
+    rs.platform_number,
+    rs.halt_time
+FROM ROUTE_STATION rs
+JOIN STATION s ON rs.station_code = s.station_code
+WHERE rs.route_id = (
+    SELECT route_id FROM ROUTE WHERE train_number = '12301'
+)
+ORDER BY rs.stop_number;
+
+
+--3
+
+SELECT 
+    available_seats,
+    rac_seats,
+    waitlist_count,
+    last_updated
+FROM TRAIN_STATUS
+WHERE train_number = '12301'
+AND journey_date = '2025-04-20'
+AND class_type = '2A';
+
+
+--4
+
+
+SELECT 
+    t.pnr_number,
+    p.name,
+    TIMESTAMPDIFF(YEAR, p.date_of_birth, CURDATE()) as age,
+    p.gender,
+    t.class_type,
+    pt.seat_number,
+    pt.coach_number,
+    pt.reservation_status
+FROM TICKET t
+JOIN PASSENGER_TICKET pt ON t.pnr_number = pt.pnr_number
+JOIN PASSENGER p ON pt.passenger_id = p.passenger_id
+WHERE t.train_number = '12301'
+AND t.journey_date = '2025-04-20';
+
+
+
+--5
+
+
+SELECT 
+    t.pnr_number,
+    p.name,
+    t.class_type,
+    COUNT(*) + 1 as waitlist_position
+FROM TICKET t
+JOIN PASSENGER_TICKET pt ON t.pnr_number = pt.pnr_number
+JOIN PASSENGER p ON pt.passenger_id = p.passenger_id
+WHERE t.train_number = '12649'
+AND t.journey_date = '2025-04-23'
+AND t.booking_status = 'WAITLISTED'
+GROUP BY t.pnr_number, p.name, t.class_type
+ORDER BY t.booking_timestamp;
+
+
+
+--6
+
+SELECT 
+    t.total_fare,
+    CASE 
+        WHEN TIMESTAMPDIFF(HOUR, NOW(), t.journey_date) > 48 THEN t.total_fare * 0.25
+        WHEN TIMESTAMPDIFF(HOUR, NOW(), t.journey_date) > 24 THEN t.total_fare * 0.50
+        ELSE t.total_fare * 0.75
+    END as cancellation_charge,
+    t.total_fare - (
+        CASE 
+            WHEN TIMESTAMPDIFF(HOUR, NOW(), t.journey_date) > 48 THEN t.total_fare * 0.25
+            WHEN TIMESTAMPDIFF(HOUR, NOW(), t.journey_date) > 24 THEN t.total_fare * 0.50
+            ELSE t.total_fare * 0.75
+        END
+    ) as refund_amount
+FROM TICKET t
+WHERE t.pnr_number = '2504166955';
+
+
+--7
+
+SELECT 
+    payment_date,
+    daily_revenue,
+    number_of_bookings,
+    COALESCE(cancellation_charges, 0) as cancellation_charges,
+    COALESCE(refund_amount, 0) as refund_amount
+FROM (
+    SELECT 
+        DATE(payment_timestamp) as payment_date,
+        SUM(amount) as daily_revenue,
+        COUNT(*) as number_of_bookings
+    FROM PAYMENT
+    WHERE payment_timestamp BETWEEN '2024-01-01' AND '2025-05-31'
+    AND payment_status = 'Success'
+    GROUP BY DATE(payment_timestamp)
+) p
+LEFT JOIN (
+    SELECT 
+        DATE(cancellation_timestamp) as cancel_date,
+        SUM(t.total_fare - c.refund_amount) as cancellation_charges,
+        SUM(c.refund_amount) as refund_amount
+    FROM CANCELLATION c
+    JOIN TICKET t ON c.pnr_number = t.pnr_number
+    WHERE cancellation_timestamp BETWEEN '2024-01-01' AND '2025-05-31'
+    GROUP BY DATE(cancellation_timestamp)
+) c ON p.payment_date = c.cancel_date
+ORDER BY payment_date;
+
+
+--8
+
+SELECT 
+    c.pnr_number,
+    c.cancellation_timestamp,
+    c.cancellation_reason,
+    c.refund_amount,
+    c.refund_status,
+    c.refund_timestamp,
+    t.train_number,
+    t.journey_date
+FROM CANCELLATION c
+JOIN TICKET t ON c.pnr_number = t.pnr_number
+WHERE c.cancellation_timestamp BETWEEN '2024-01-01' AND '2025-05-31'
+ORDER BY c.cancellation_timestamp DESC;
+
+--9
+
+SELECT 
+    r.source_station,
+    r.destination_station,
+    r.train_number,
+    COUNT(t.pnr_number) as passenger_count,
+    SUM(t.total_fare) as total_revenue
+FROM ROUTE r
+JOIN TICKET t ON r.train_number = t.train_number
+WHERE t.journey_date BETWEEN '2024-01-01' AND '2025-05-31'
+GROUP BY r.source_station, r.destination_station, r.train_number
+ORDER BY passenger_count DESC
+LIMIT 10;
+
+--10 
+
+SELECT 
+    t.pnr_number,
+    t.booking_date,
+    t.journey_date,
+    t.train_number,
+    tr.train_name,
+    t.source_station,
+    t.destination_station,
+    t.class_type,
+    t.total_passengers,
+    tc.basic_fare * t.total_passengers as basic_fare,
+    p.gst_amount,
+    p.service_charge,
+    (
+        SELECT COALESCE(SUM(concession_amount), 0)
+        FROM PASSENGER_TICKET
+        WHERE pnr_number = t.pnr_number
+    ) as concession_amount,
+    t.total_fare,
+    p.payment_mode,
+    p.transaction_id,
+    p.payment_status,
+    p.payment_timestamp
+FROM TICKET t
+JOIN TRAIN tr ON t.train_number = tr.train_number
+JOIN TRAIN_CLASS tc ON t.train_number = tc.train_number AND t.class_type = tc.class_type
+JOIN PAYMENT p ON t.pnr_number = p.pnr_number
+WHERE t.pnr_number = '2504166955';
