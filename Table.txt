@@ -369,3 +369,83 @@ BEGIN
 END //
 
 DELIMITER ;
+
+
+
+-- FUNCTION to get train-details
+
+DROP FUNCTION IF EXISTS get_train_details;
+
+DELIMITER //
+
+CREATE FUNCTION get_train_details(p_train_number VARCHAR(10)) 
+RETURNS JSON
+DETERMINISTIC
+BEGIN
+    DECLARE result JSON;
+    
+    -- Get train details and schedule
+    SELECT JSON_OBJECT(
+        'trainNumber', t.train_number,
+        'trainName', t.train_name,
+        'trainType', t.train_type,
+        'totalCoaches', t.total_coaches,
+        'runningDays', JSON_OBJECT(
+            'sunday', t.runs_on_sunday,
+            'monday', t.runs_on_monday,
+            'tuesday', t.runs_on_tuesday,
+            'wednesday', t.runs_on_wednesday,
+            'thursday', t.runs_on_thursday,
+            'friday', t.runs_on_friday,
+            'saturday', t.runs_on_saturday
+        ),
+        'route', (
+            SELECT JSON_OBJECT(
+                'source', r.source_station,
+                'destination', r.destination_station,
+                'totalDistance', r.total_distance,
+                'totalStops', r.total_stops
+            )
+            FROM ROUTE r
+            WHERE r.train_number = t.train_number
+        ),
+        'schedule', (
+            SELECT JSON_ARRAYAGG(
+                JSON_OBJECT(
+                    'stationCode', rs.station_code,
+                    'stationName', s.station_name,
+                    'city', s.city,
+                    'state', s.state,
+                    'arrivalTime', rs.arrival_time,
+                    'departureTime', rs.departure_time,
+                    'distanceFromSource', rs.distance_from_source,
+                    'platformNumber', rs.platform_number,
+                    'haltTime', rs.halt_time
+                )
+            )
+            FROM ROUTE_STATION rs
+            JOIN STATION s ON rs.station_code = s.station_code
+            WHERE rs.route_id = (
+                SELECT route_id FROM ROUTE WHERE train_number = t.train_number
+            )
+            ORDER BY rs.stop_number
+        ),
+        'classes', (
+            SELECT JSON_ARRAYAGG(
+                JSON_OBJECT(
+                    'classType', tc.class_type,
+                    'totalSeats', tc.total_seats,
+                    'basicFare', tc.basic_fare
+                )
+            )
+            FROM TRAIN_CLASS tc
+            WHERE tc.train_number = t.train_number
+        )
+    ) INTO result
+    FROM TRAIN t
+    WHERE t.train_number = p_train_number;
+    
+    RETURN result;
+END //
+
+DELIMITER ;
